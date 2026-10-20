@@ -1,0 +1,43 @@
+{
+  "name": "photo-ferret",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Photo gallery with Jev-tagged metadata: a local authoring tool and a static site for Cloudflare",
+  "license": "MIT",
+  "type": "module",
+  "engines": {
+    "node": ">=24"
+  },
+  "scripts": {
+    "dev": "concurrently -k -n server,web -c blue,green \"tsx watch --env-file-if-exists=.env server/index.ts\" \"vite\"",
+    "build": "vite build",
+    "start": "NODE_ENV=production tsx --env-file-if-exists=.env server/index.ts",
+    "probe": "tsx --env-file-if-exists=.env scripts/probe.ts",
+    "typecheck": "tsc --noEmit",
+    "import-folder": "tsx --env-file-if-exists=.env scripts/import-folder.ts",
+    "rebuild-derived": "tsx --env-file-if-exists=.env scripts/rebuild-derived.ts",
+    "remeasure": "tsx --env-file-if-exists=.env scripts/remeasure.ts",
+    "derive-tags": "tsx --env-file-if-exists=.env scripts/derive-tags.ts",
+    "score-quality": "tsx --env-file-if-exists=.env scripts/score-quality.ts",
+    "remap-quality": "tsx --env-file-if-exists=.env scripts/remap-quality.ts",
+    "export-site": "tsx --env-file-if-exists=.env scripts/export-site.ts",
+    "preview-site": "wrangler dev",
+    "deploy": "wrangler deploy"
+  },
+  "dependencies": {
+    "@typesafe-ai/sdk": "^0.7.0",
+    "express": "^5.3.0",
+    "multer": "^2.4.0",
+    "sharp": "^0.35.5",
+    "tsx": "^4.23.15"
+  },
+  "devDependencies": {
+    "@types/express": "^5.0.6",
+    "@types/multer": "^2.3.0",
+    "@types/node": "^26.6.5",
+    "concurrently": "^10.0.6",
+    "typescript": "^7.0.2",
+    "vite": "^8.3.4",
+    "wrangler": "^4.151.1"
+  }
+}

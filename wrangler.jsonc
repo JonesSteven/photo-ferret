@@ -1,0 +1,15 @@
+// The static site on Cloudflare (Workers static assets, no Worker script). npm run export-site writes
+// site/; npm run deploy uploads it (only changed files); npm run preview-site serves it locally the way
+// Cloudflare would, _headers included.
+{
+  "$schema": "./node_modules/wrangler/config-schema.json",
+  "name": "photoalbumnavigator",
+  "compatibility_date": "2026-10-19",
+  "assets": { "directory": "./site" },
+  // The owner's domain (DNS on Cloudflare, registered at GoDaddy). Cloudflare creates the DNS records and
+  // the certificate on deploy; any other record on these names (such as the old Squarespace ones) blocks it.
+  "routes": [
+    { "pattern": "stevenjonesphotography.ca", "custom_domain": true },
+    { "pattern": "www.stevenjonesphotography.ca", "custom_domain": true }
+  ]
+}

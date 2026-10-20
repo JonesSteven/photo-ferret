@@ -1,0 +1,248 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Photo Ferret</title>
+    <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Ccircle cx='23' cy='9' r='4' fill='%23e3a34a'/%3E%3Cpath d='M1 28 11 11l6 9 4-5 10 13z' fill='%232f5d43'/%3E%3C/svg%3E" />
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet" />
+    <link rel="stylesheet" href="./styles.css" />
+    <!-- The saved theme, applied before the page draws so a light-mode visitor never sees a flash of dark. -->
+    <script>
+      try {
+        if (localStorage.getItem("pan.theme") === "light") document.documentElement.dataset.theme = "light";
+      } catch {}
+    </script>
+  </head>
+  <body>
+    <header class="topbar">
+      <button id="filters-open" class="btn btn-quiet filters-open" type="button" aria-controls="sidebar" aria-expanded="false">
+        Filters <span id="filters-badge" class="badge-count" hidden></span>
+      </button>
+      <h1 class="brand">Photo Ferret</h1>
+      <span id="count" class="topbar-count"></span>
+      <button id="about-open" class="about-link" type="button" aria-haspopup="dialog">About</button>
+      <!-- Dark by default; shows the sun in dark mode (switch to light) and the moon in light mode. -->
+      <button id="theme-toggle" class="theme-toggle" type="button" aria-label="Switch to light mode" title="Switch to light mode">
+        <svg class="theme-sun" viewBox="0 0 24 24" width="18" height="18" aria-hidden="true"><circle cx="12" cy="12" r="4" /><path d="M12 2v2M12 20v2M4.93 4.93l1.41 1.41M17.66 17.66l1.41 1.41M2 12h2M20 12h2M4.93 19.07l1.41-1.41M17.66 6.34l1.41-1.41" /></svg>
+        <svg class="theme-moon" viewBox="0 0 24 24" width="18" height="18" aria-hidden="true"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z" /></svg>
+      </button>
+    </header>
+
+    <div id="layout" class="layout">
+      <aside id="sidebar" class="sidebar" aria-label="Filters">
+        <!-- Outside the scrolling area, so the count and Clear filters stay at the top. -->
+        <div class="filter-summary">
+          <span id="count-side"></span>
+          <button id="clear" class="link-btn" type="button" hidden>Clear filters</button>
+        </div>
+        <div class="sidebar-scroll">
+          <div class="sidebar-head">
+            <button id="filters-close" class="lb-close filters-close" type="button" aria-label="Close filters">×</button>
+          </div>
+
+          <div class="filter-group">
+            <span class="filter-label">Sort</span>
+            <select id="sort-select" aria-label="Sort"></select>
+          </div>
+
+          <div class="filter-group" data-section="primary-subject">
+            <span class="filter-label">Primary subject</span>
+            <select id="primary-select" aria-label="Primary subject"></select>
+          </div>
+          <div class="filter-group" data-section="in-the-photo">
+            <span class="filter-label">In the photo</span>
+            <div id="presence" class="presence"></div>
+          </div>
+          <div class="filter-group" data-section="activities">
+            <span class="filter-label">Activities</span>
+            <div id="chips-activity" class="chips"></div>
+          </div>
+          <div class="filter-group" data-section="weather-sky">
+            <span class="filter-label">Weather &amp; sky</span>
+            <div id="chips-sky" class="chips"></div>
+          </div>
+          <div class="filter-group" data-section="palette">
+            <span class="filter-label">Palette</span>
+            <div id="chips-colour" class="chips"></div>
+          </div>
+
+
+          <div id="slider-panel" class="slider-panel">
+            <div class="slider-section" data-section="landscape">
+              <h2 class="filter-label">Landscape</h2>
+              <p class="filter-note">Each is estimated on its own, so they can add up to more than 100% (snow on a mountain counts as both).</p>
+              <div id="sliders-surface" class="slider-grid"></div>
+            </div>
+            <div class="slider-section" data-section="mood">
+              <h2 class="filter-label">Mood</h2>
+              <div id="sliders-mood" class="slider-grid"></div>
+            </div>
+            <div class="slider-section" data-section="colour">
+              <h2 class="filter-label">Colour</h2>
+              <div id="sliders-colour" class="slider-grid"></div>
+            </div>
+            <div class="slider-section" data-section="look">
+              <h2 class="filter-label">Look &amp; composition</h2>
+              <div id="sliders-look" class="slider-grid"></div>
+            </div>
+            <!-- The 3D map: one more filter, collapsed until opened (see buildSections). -->
+            <div id="map-panel" class="slider-section map-panel" data-section="map" data-collapsed-default>
+              <h2 class="filter-label">EXPERIMENTAL - 3D MAP</h2>
+              <p class="filter-note">Place the pointer in the cube (click a dot or use the sliders) and widen it into a sphere: only the photos inside it are shown, together with your other filters.</p>
+              <div id="map-c" class="map-card"></div>
+            </div>
+          </div>
+
+          <footer class="sidebar-foot">
+            <p id="copyright" class="copyright"></p>
+            <a id="admin-link" href="/admin/">Admin</a>
+          </footer>
+        </div>
+        <button id="sidebar-tab" class="sidebar-tab" type="button" aria-controls="sidebar" aria-expanded="true" title="Hide filters">
+          <span aria-hidden="true">‹</span>
+        </button>
+      </aside>
+      <div id="drawer-backdrop" class="drawer-backdrop" hidden></div>
+
+      <main class="gallery">
+        <div id="error" class="error" role="alert" hidden></div>
+        <p id="empty" class="empty-state" hidden></p>
+        <section id="grid" class="grid" aria-live="polite"></section>
+      </main>
+    </div>
+
+    <dialog id="lightbox" class="lightbox" aria-label="Photo">
+      <div class="lb-stage">
+        <img id="lb-img" alt="" title="Open in gallery view" />
+        <div id="lb-boxes" class="lb-boxes" hidden></div>
+        <div class="lb-tools">
+          <button id="lb-gallery" class="lb-tool" type="button" title="Show only the photos, on black">
+            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 9V4h5M20 9V4h-5M4 15v5h5M20 15v5h-5" /></svg>
+            <span class="lb-label">Gallery view</span>
+          </button>
+          <button id="lb-copy-link" class="lb-tool" type="button" title="Copy a link to this photo">
+            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M10 14a4.5 4.5 0 0 0 6.4 0l3-3a4.5 4.5 0 0 0-6.4-6.4l-1 1M14 10a4.5 4.5 0 0 0-6.4 0l-3 3a4.5 4.5 0 0 0 6.4 6.4l1-1" /></svg>
+            <span class="lb-label">Copy link</span>
+          </button>
+          <!-- Slideshow: full screen through every photo in the current (filtered) list, looping. -->
+          <div class="lb-tool-group">
+            <button id="lb-slideshow" class="lb-tool" type="button" title="Play every photo in the current list full screen, looping">
+              <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M7 5v14l12-7z" /></svg>
+              <span class="lb-label">Slideshow</span>
+            </button>
+            <label class="lb-seconds" title="Seconds per photo (3–60)">
+              <input id="lb-seconds" type="number" min="3" max="60" step="1" inputmode="numeric" aria-label="Seconds per photo" />
+              <span aria-hidden="true">s</span>
+            </label>
+            <button id="lb-crossfade" class="lb-tool lb-fade" type="button" aria-pressed="true" title="Crossfade between photos in the slideshow">
+              <svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3.5" y="3.5" width="17" height="17" rx="3.5" /><path class="check" d="M7.5 12.5l3 3 6-7" /></svg>
+              Fade
+            </button>
+          </div>
+          <!-- Show boxes and its ? are one pill, so the note reads as being about the boxes. -->
+          <div id="lb-boxes-group" class="lb-tool-group" hidden>
+            <button id="lb-boxes-toggle" class="lb-tool" type="button" aria-pressed="false" title="Outline the people, animals, vehicles and flowers Jev found">
+              <svg viewBox="0 0 24 24" aria-hidden="true"><rect x="4" y="5" width="16" height="14" rx="2" stroke-dasharray="3 2.5" /></svg>
+              <span>Show boxes</span>
+            </button>
+            <button id="lb-boxes-help" class="lb-tool lb-help" type="button" aria-label="About the boxes" aria-expanded="false" aria-controls="lb-boxes-note" title="Jev gives one box per tag: if several qualify (say, three people), only one of them is outlined."><span>?</span></button>
+          </div>
+          <p id="lb-boxes-note" class="lb-note" hidden><span>Jev gives one box per tag: if several qualify (say, three people), only one of them is outlined.</span></p>
+        </div>
+        <button id="lb-prev" class="lb-nav prev" type="button" aria-label="Previous photo">‹</button>
+        <button id="lb-next" class="lb-nav next" type="button" aria-label="Next photo">›</button>
+      </div>
+      <aside id="lb-info" class="lb-info">
+        <button id="lb-close" class="lb-close" type="button" aria-label="Close">×</button>
+        <h2 id="lb-title"></h2>
+        <p id="lb-desc" class="lb-desc"></p>
+        <div id="lb-tags" class="lb-tags"></div>
+        <div id="lb-cover" class="lb-cover"></div>
+        <div id="lb-moods" class="lb-moods"></div>
+        <p id="lb-file" class="lb-file"></p>
+      </aside>
+    </dialog>
+
+    <!-- Gallery view: the photo alone on black, with previous/next. -->
+    <dialog id="viewer" class="viewer" aria-label="Gallery view" tabindex="-1">
+      <img id="viewer-img" class="front" alt="" />
+      <img id="viewer-img-2" alt="" />
+      <button id="viewer-prev" class="viewer-nav prev" type="button" aria-label="Previous photo">‹</button>
+      <button id="viewer-next" class="viewer-nav next" type="button" aria-label="Next photo">›</button>
+      <button id="viewer-close" class="viewer-close" type="button" aria-label="Close gallery view">×</button>
+      <button id="viewer-play" class="viewer-play" type="button" aria-label="Pause slideshow" hidden>
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path class="icon-pause" d="M8 5v14M16 5v14" /><path class="icon-play" d="M7 5v14l12-7z" /></svg>
+      </button>
+    </dialog>
+
+    <!-- About: the owner's note (set in the admin) and a plain-language account of how the app works. -->
+    <dialog id="about" class="about" aria-labelledby="about-title">
+      <button id="about-close" class="lb-close" type="button" aria-label="Close">×</button>
+      <h2 id="about-title">About</h2>
+      <div id="about-owner" class="about-owner" hidden></div>
+
+      <section class="about-how">
+        <h3>How the photos are organised</h3>
+        <p>
+          Every photo in this album was looked at once by an AI model, and a few more things were measured directly from the
+          photo's colours. The results are saved with the photo, so when you filter and sort, nothing is being worked out on the
+          spot: the album simply looks up what's already known. That's why the filters respond instantly.
+        </p>
+
+        <h3>The AI: Jev</h3>
+        <p>
+          The AI used here is <strong>Jev</strong>, made by a company called TypeSafe. Jev isn't a chatbot and doesn't write
+          descriptions. Instead it answers specific questions with a short, fixed kind of answer, such as <em>yes or no</em>,
+          <em>pick one from this list</em>, or <em>how much</em>, and it says how sure it is of each answer.
+        </p>
+        <p>
+          It's used for the things that need an understanding of what's in the picture, which simple measurements can't give:
+        </p>
+        <ul>
+          <li><strong>Primary subject</strong>: what the photo is mainly of, such as water, mountains, wildlife or people.</li>
+          <li><strong>In the photo</strong>: whether there are people, wildlife, birds, insects, flowers, tents, vehicles or structures.</li>
+          <li><strong>Activities</strong>: what any people are doing, such as hiking, skiing or paddling.</li>
+          <li><strong>Weather &amp; sky</strong>: clear, cloudy or foggy, and sunsets, night skies and rainbows.</li>
+          <li><strong>Landscape</strong>: roughly how much of the photo is sky, water, forest, snow, rock and so on.</li>
+          <li><strong>Mood</strong> and <strong>Look &amp; composition</strong>: things like how dramatic the sky is, how wild the scene feels, and whether it's a close-up or a wide view.</li>
+          <li><strong>Quality</strong>: an overall score from 1 to 100, as a judge at a nature photography club competition might rate the photo, taking in focus and exposure, composition, light and how memorable it is. Close-ups, textures and abstract photos are judged on their own terms, not against grand views.</li>
+        </ul>
+        <p>
+          Each photo is asked about 50 of these questions in one go. When Jev isn't confident about an answer, the photo is
+          marked as unsure rather than guessed, so it only shows up when that filter is left at <em>Any</em>. For people,
+          animals and other things in the photo, Jev can also point out where they are: <em>Show boxes</em> outlines the most
+          prominent one of each it found.
+        </p>
+
+        <h3>Measured from the colours (no AI)</h3>
+        <p>
+          Some things don't need an AI at all: they can simply be counted. Every photo is made of tiny dots of colour (pixels),
+          and counting them gives exact, consistent answers. The <strong>Palette</strong> chips, the
+          <strong>Colour · Saturation</strong> picker, and the warmth and brightness sliders all come from counting the colours of
+          each photo's pixels.
+        </p>
+        <p>
+          A little care goes into making those counts match what you'd expect: very dark shadows and blown-out bright spots (like
+          the sun) are ignored, and grey counts for less than real colour, so a bright sunset over grey beach stones is called
+          red, not "neutral".
+        </p>
+        <p>
+          The date a photo was taken comes from the information the camera stores inside the file. When a photo doesn't carry
+          that, it shows <em>Date: Unknown</em> and is placed after the dated ones.
+        </p>
+
+        <h3>Good to know</h3>
+        <ul>
+          <li>The AI's answers are well-informed estimates, not facts, and they can be wrong. The album's owner can correct them.</li>
+          <li>Landscape amounts are approximate, and each is judged on its own, so they can add up to more than 100% (snow on a mountain counts as both).</li>
+          <li>To protect privacy, when a photo is added its hidden details are removed: where it was taken (GPS location), camera serial numbers, names and contact details, and hidden preview images. Only the date taken and what's needed to show the colours correctly are kept.</li>
+        </ul>
+      </section>
+    </dialog>
+
+    <script type="module" src="./main.ts"></script>
+  </body>
+</html>
