@@ -1,6 +1,6 @@
 import { readFile } from "node:fs/promises";
 import sharp from "sharp";
-import { getPhoto, listPendingIds, saveClassification, updatePhoto } from "./db.ts";
+import { getPhoto, listPendingIds, saveClassification, saveFingerprint, updatePhoto } from "./db.ts";
 import { cropTiles, fitsJev, panoramaGrid, type PreparedImage } from "./imagePrep.ts";
 import { askCloseLook, askJev, describeJevError, finalize, hasApiKey, mergeTiles, normalize, toAttributes } from "./jev.ts";
 import { buildDerived, computedAttributes, derivedExists, derivedPath, ImagePrepError, originalPath } from "./storage.ts";
@@ -48,8 +48,9 @@ async function processPhoto(id: string) {
 
   if (!photo.derived_ready || !(await derivedExists(id, "jev"))) {
     try {
-      const { width, height, takenAt } = await buildDerived(id, photo.original_ext);
+      const { width, height, takenAt, fingerprint } = await buildDerived(id, photo.original_ext);
       updatePhoto(id, { width, height, taken_at: takenAt, derived_ready: 1 });
+      saveFingerprint(id, fingerprint);
     } catch (err) {
       if (!(err instanceof ImagePrepError)) console.error(`[derive] ${id}`, err);
       const message = err instanceof ImagePrepError ? err.message : "Couldn't process this image.";

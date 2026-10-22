@@ -17,6 +17,7 @@
     "import-folder": "tsx --env-file-if-exists=.env scripts/import-folder.ts",
     "rebuild-derived": "tsx --env-file-if-exists=.env scripts/rebuild-derived.ts",
     "remeasure": "tsx --env-file-if-exists=.env scripts/remeasure.ts",
+    "fingerprint": "tsx --env-file-if-exists=.env scripts/fingerprint.ts",
     "derive-tags": "tsx --env-file-if-exists=.env scripts/derive-tags.ts",
     "score-quality": "tsx --env-file-if-exists=.env scripts/score-quality.ts",
     "remap-quality": "tsx --env-file-if-exists=.env scripts/remap-quality.ts",

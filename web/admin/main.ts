@@ -1,4 +1,15 @@
-import { ABOUT_TEXT_MAX, type AdminPhoto, type AttributeDef, type AttributeValue, type PhotoPatch, SITE_TITLE_MAX, type SiteSettings, type UploadResult } from "../../shared/types.ts";
+import {
+  ABOUT_TEXT_MAX,
+  type AdminPhoto,
+  type AttributeDef,
+  type AttributeValue,
+  type DuplicateGroup,
+  type DuplicateReport,
+  type PhotoPatch,
+  SITE_TITLE_MAX,
+  type SiteSettings,
+  type UploadResult,
+} from "../../shared/types.ts";
 import { $, api, el, formatBytes, HttpError, isNumeric, pct, placeBox, valueLabel } from "../shared/ui.ts";
 
 const POLL_MS = 3000;
@@ -9,7 +20,8 @@ const editor = $<HTMLDialogElement>("editor");
 
 let defs: AttributeDef[] = [];
 let photos: AdminPhoto[] = [];
-let view: "all" | "pending" | "error" | "hidden" = "all";
+let view: "all" | "pending" | "error" | "hidden" | "duplicates" = "all";
+let duplicates: DuplicateReport | null = null; // null until first loaded
 let editing: AdminPhoto | null = null;
 let pollTimer: number | undefined;
 // Upload rows still waiting for Jev, by photo id; refresh() updates them when tagging finishes.
@@ -49,6 +61,7 @@ async function showApp() {
   if (!defs.length) defs = await api<AttributeDef[]>("/api/attributes");
   void loadSettings();
   await refresh();
+  void loadDuplicates();
 }
 
 // ---- Gallery views (site settings) ----
@@ -125,13 +138,15 @@ function renderToolbar() {
     if (p.jevStatus === "error") counts.error++;
     if (!p.published) counts.hidden++;
   }
-  const labels = { all: "All", pending: "Tagging", error: "Errors", hidden: "Hidden" } as const;
+  const labels = { all: "All", pending: "Tagging", error: "Errors", hidden: "Hidden", duplicates: "Duplicates" } as const;
+  const count = (k: keyof typeof labels) => (k !== "duplicates" ? ` (${counts[k]})` : duplicates ? ` (${duplicates.groups.length})` : "");
   $("status-seg").replaceChildren(
     ...(Object.keys(labels) as (keyof typeof labels)[]).map((k) => {
-      const b = el("button", { type: "button", role: "radio", "aria-checked": String(view === k), text: `${labels[k]} (${counts[k]})` });
+      const b = el("button", { type: "button", role: "radio", "aria-checked": String(view === k), text: `${labels[k]}${count(k)}` });
       b.addEventListener("click", () => {
         view = k;
         render();
+        if (k === "duplicates") void loadDuplicates();
       });
       return b;
     }),
@@ -168,10 +183,100 @@ function tile(p: AdminPhoto) {
 
 function render() {
   renderToolbar();
+  $("empty").hidden = photos.length > 0;
+  if (view === "duplicates") return renderDuplicates();
   const list = visiblePhotos();
   grid.replaceChildren(...list.map(tile));
-  $("empty").hidden = photos.length > 0;
   $("count").textContent = `${list.length} shown`;
+}
+
+// ---- Possible duplicates ----
+
+let duplicatesLoading = false;
+let duplicatesStale = false;
+
+// Reloads the groups (the server caches them until something changes). Called whenever photos change.
+async function loadDuplicates() {
+  if (duplicatesLoading) {
+    duplicatesStale = true;
+    return;
+  }
+  duplicatesLoading = true;
+  try {
+    duplicates = await adminApi<DuplicateReport>("/api/admin/duplicates");
+    render();
+  } catch (err) {
+    if (view === "duplicates" && !(err instanceof HttpError && err.status === 401)) showError(`Couldn't look for duplicates: ${(err as Error).message}`);
+  } finally {
+    duplicatesLoading = false;
+    if (duplicatesStale) {
+      duplicatesStale = false;
+      void loadDuplicates();
+    }
+  }
+}
+
+function renderDuplicates() {
+  if (!duplicates) {
+    grid.replaceChildren(el("p", { class: "dup-note", text: "Looking for duplicates…" }));
+    $("count").textContent = "";
+    return;
+  }
+  const byId = new Map(photos.map((p) => [p.id, p]));
+  const groups = duplicates.groups.filter((g) => g.ids.filter((id) => byId.has(id)).length > 1);
+  const notes = [
+    groups.length ? null : el("p", { class: "dup-note", text: "No possible duplicates among the visible photos." }),
+    duplicates.unfingerprinted
+      ? el("p", { class: "dup-note", text: `${duplicates.unfingerprinted} photo(s) haven't been fingerprinted yet, so aren't compared. Run npm run fingerprint.` })
+      : null,
+  ];
+  grid.replaceChildren(...groups.map((g) => duplicateGroup(g, byId)), ...notes.filter((n) => n !== null));
+  $("count").textContent = `${groups.length} group(s) · hide or delete the extras, or mark a group "Not duplicates"`;
+}
+
+function duplicateGroup(g: DuplicateGroup, byId: Map<string, AdminPhoto>) {
+  const members = g.ids.map((id) => byId.get(id)).filter((p) => p !== undefined);
+  // The suggested keeper: the best Jev quality score, when at least two have one.
+  const scored = members.filter((p) => p.attrs.quality != null);
+  const keeper = scored.length > 1 ? scored.reduce((a, b) => (Number(b.attrs.quality) > Number(a.attrs.quality) ? b : a)) : null;
+  const when = g.spanSeconds == null ? "capture time missing" : g.spanSeconds === 0 ? "taken the same second" : `taken ${spanText(g.spanSeconds)} apart`;
+  const dismiss = el("button", { type: "button", class: "btn btn-quiet", text: "Not duplicates" });
+  dismiss.addEventListener("click", async () => {
+    dismiss.disabled = true;
+    try {
+      duplicates = await adminApi<DuplicateReport>("/api/admin/duplicates/dismiss", { method: "POST", json: { ids: g.ids } });
+      render();
+    } catch (err) {
+      dismiss.disabled = false;
+      showError(`Couldn't save: ${(err as Error).message}`);
+    }
+  });
+  return el(
+    "section",
+    { class: "dup-group" },
+    el(
+      "div",
+      { class: "dup-head" },
+      el("span", { text: `${members.length} photos · ${Math.round(g.similarity * 100)}% alike${g.panorama ? " (panorama versions)" : ""} · ${when}` }),
+      dismiss,
+    ),
+    el(
+      "div",
+      { class: "grid admin-grid" },
+      ...members.map((p) => {
+        const t = tile(p);
+        if (p === keeper) t.append(el("span", { class: "badge badge-keeper", text: "Suggested keeper", title: `Highest Jev quality score (${p.attrs.quality})` }));
+        return t;
+      }),
+    ),
+  );
+}
+
+function spanText(seconds: number) {
+  if (seconds < 120) return `${seconds} s`;
+  if (seconds < 7200) return `${Math.round(seconds / 60)} min`;
+  if (seconds < 172800) return `${Math.round(seconds / 3600)} h`;
+  return `${Math.round(seconds / 86400)} days`;
 }
 
 async function refresh() {
@@ -180,9 +285,11 @@ async function refresh() {
     const list = await adminApi<AdminPhoto[]>("/api/admin/photos");
     // With many uploads, refreshes overlap; an older list can arrive last and would lack the newest photos.
     if (seq !== refreshSeq) return;
+    const changed = list.length !== photos.length || list.some((p, i) => p.id !== photos[i]?.id || p.published !== photos[i]?.published || p.derivedReady !== photos[i]?.derivedReady);
     photos = list;
     showError(null);
     render();
+    if (changed && duplicates) void loadDuplicates();
     updateUploadRows();
     if (editing) {
       const fresh = photos.find((p) => p.id === editing!.id);
@@ -319,6 +426,7 @@ async function patch(body: PhotoPatch) {
     replacePhoto(p);
     renderEditor(p, false);
     flashSaved();
+    if ("published" in body) void loadDuplicates();
   } catch (err) {
     flashSaved(`Couldn't save: ${(err as Error).message}`);
   }
@@ -527,6 +635,7 @@ $("ed-delete").addEventListener("click", async () => {
     deletedIds.add(id);
     editor.close();
     render();
+    void loadDuplicates();
   } catch (err) {
     flashSaved(`Couldn't delete: ${(err as Error).message}`);
   }

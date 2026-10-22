@@ -41,6 +41,7 @@ Needs Node 24 or later, for the built-in `node:sqlite`.
 | `npm run score-quality` | Scores the quality of photos that have no score (one Jev request each); `-- --force` rescores all, needed after changing the quality question |
 | `npm run remap-quality` | Recomputes every quality value from its stored Jev reading after a change to the curve in `server/jev.ts` (no Jev calls) |
 | `npm run remeasure` | Recomputes the pixel-measured tags (warmth, saturation, brightness, palette) for every photo (no Jev calls) |
+| `npm run fingerprint` | Fingerprints photos that don't have one yet, for the admin's Duplicates view (no Jev calls; about 25 s for 2,800 photos). `-- --all` redoes every photo |
 | `npm run probe -- photo.jpg` | Sends one photo to Jev and prints the raw and normalized answers (one live request) |
 | `npm run typecheck` | TypeScript check |
 
@@ -73,7 +74,7 @@ derived/<id>/display.webp      2048 px long side, for the lightbox
 derived/<id>/jev.jpg           the exact JPEG sent to Jev (the boxes line up with it)
 ```
 
-- **Originals:** kept exactly as uploaded, at full resolution, up to 100 MB each. A duplicate upload (same SHA-256 hash) is rejected.
+- **Originals:** kept exactly as uploaded, at full resolution, up to 100 MB each. A duplicate upload (same SHA-256 hash) is rejected. Near-duplicates are flagged in the admin instead (see Duplicates below).
 - **Derived images:** rotated upright, stripped of all metadata, and rebuilt automatically if one is missing.
 - **Files that can't be decoded** (such as HEIC or camera RAW): the original is still stored and downloadable, and the photo is marked with an error in the admin.
 
@@ -102,6 +103,11 @@ gallery: loads data.json once, then filters, counts, sorts and places the map in
   - EXIF rotation is applied to the pixels.
   - Each side is fitted between 280 and 1568 px. Small images are upscaled, never padded.
   - The result is re-encoded as a baseline JPEG.
+- `server/duplicates.ts`: the admin's **Duplicates** view, which groups visible photos that are probably the same shot.
+  - Each photo gets a small greyscale fingerprint when it's processed (`npm run fingerprint` for older photos). Comparisons use the detail left after subtracting a blurred copy, since broad light (bright sky over darker ground) makes unrelated landscapes look alike.
+  - Ordinary frames are compared when taken within 2 minutes of each other or when their difference hashes are close. Copies from the same second, or without a capture time, are searched for straightening (up to 5°, with the crop's zoom). Bursts are searched for a small camera shift. Pairs taken close together are flagged from 60% alike, others from 80%.
+  - Panoramas taken the same day, or without a capture time, are also compared as possible re-stitches: the narrower view is looked for inside the other, allowing for a different crop, width and exposure. They're flagged from 75%.
+  - Hiding or deleting the extras resolves a group. "Not duplicates" stores the pairs so they aren't grouped again. The photo with the best Jev quality score is marked as the suggested keeper.
 - `server/classifyQueue.ts`: background tagging. Photos still pending when the server restarts are queued again.
 - `server/auth.ts`: the single admin account from `.env`, with a 7-day HMAC-signed session cookie.
 - `server/jev.ts`: the TypeSafe client. It sends the `TypeSafe-Danger-Zone-Images: true` header, normalizes answers, and maps API errors to friendly messages.

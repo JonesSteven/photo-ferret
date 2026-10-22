@@ -51,6 +51,13 @@
 }
 .badge-error { background: var(--danger-soft); color: var(--danger); }
 .badge-pending { background: var(--amber-soft); }
+.badge-keeper { left: auto; right: 10px; background: var(--moss); color: #fff; }
+
+/* Possible duplicates: one row per group */
+.dup-group { grid-column: 1 / -1; padding: 10px 12px 12px; border: 1px solid var(--line); border-radius: var(--radius); background: var(--surface); }
+.dup-group .admin-grid { margin-top: 8px; }
+.dup-head { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 6px 12px; font-size: .875rem; color: var(--muted); }
+.dup-note { grid-column: 1 / -1; margin: 6px 0; font-size: .875rem; color: var(--muted); }
 
 /* Editor dialog */
 .editor {

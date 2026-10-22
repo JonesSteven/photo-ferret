@@ -11,6 +11,7 @@ import { enqueue, enqueueAll, resumePending } from "./classifyQueue.ts";
 import {
   attributesFor,
   deletePhoto,
+  dismissPairs,
   findBySha256,
   dataVersion,
   getPhoto,
@@ -24,6 +25,7 @@ import {
   setOverrides,
   updatePhoto,
 } from "./db.ts";
+import { duplicateReport } from "./duplicates.ts";
 import { hasApiKey, JEV_MODEL } from "./jev.ts";
 import { adminPhotos, toAdmin } from "./photos.ts";
 import { ATTRIBUTE_IDS, ATTRIBUTES, isNumericKind, isValidAttributeValue } from "./questions.ts";
@@ -258,6 +260,21 @@ app.post("/api/admin/reclassify-all", (_req, res) => {
   const ids = markAllPending();
   enqueueAll(ids);
   res.json({ queued: ids.length });
+});
+
+// Possible duplicates among the visible photos (see duplicates.ts).
+app.get("/api/admin/duplicates", (_req, res) => {
+  res.json(duplicateReport());
+});
+
+// "Not duplicates": these photos are never grouped with each other again.
+app.post("/api/admin/duplicates/dismiss", (req, res) => {
+  const ids = (req.body as { ids?: unknown } | undefined)?.ids;
+  if (!Array.isArray(ids) || ids.length < 2 || !ids.every((id) => typeof id === "string" && getPhoto(id))) {
+    return res.status(400).json({ error: "Expected the ids of two or more photos." });
+  }
+  dismissPairs(ids);
+  res.json(duplicateReport());
 });
 
 app.delete("/api/admin/photos/:id", async (req, res) => {

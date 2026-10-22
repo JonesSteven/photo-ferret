@@ -2,7 +2,7 @@ import { createHash } from "node:crypto";
 import { createReadStream } from "node:fs";
 import { mkdir, readFile, rm, stat, writeFile } from "node:fs/promises";
 import path from "node:path";
-import sharp from "sharp";
+import sharp, { type ResizeOptions } from "sharp";
 import { type CleanedImage, cleanImage } from "./cleanImage.ts";
 import { ImagePrepError, prepareImage } from "./imagePrep.ts";
 
@@ -47,6 +47,35 @@ export interface DerivedInfo {
   width: number; // upright original dimensions
   height: number;
   takenAt: string | null; // EXIF DateTimeOriginal, see exifTakenAt
+  fingerprint: Fingerprint;
+}
+
+// What duplicates.ts compares photos by (all greyscale, one byte per pixel):
+// - grid: GRID×GRID, stretched to a square, for near-identical frames;
+// - dhash: 64-bit difference hash (hex), a cheap first test across the whole album;
+// - strip: the shape kept, shorter side STRIP_SIDE, for panoramas whose stitches differ in crop and width.
+export const FINGERPRINT_GRID = 64;
+export const FINGERPRINT_STRIP_SIDE = 32;
+export interface Fingerprint {
+  dhash: string;
+  grid: Uint8Array;
+  strip: Uint8Array;
+  stripWidth: number;
+  stripHeight: number;
+}
+
+const grey = (image: Buffer, resize: ResizeOptions) =>
+  sharp(image).flatten({ background: "#000" }).greyscale().resize(resize).raw().toBuffer({ resolveWithObject: true });
+
+export async function fingerprint(image: Buffer): Promise<Fingerprint> {
+  const { data: grid } = await grey(image, { width: FINGERPRINT_GRID, height: FINGERPRINT_GRID, fit: "fill" });
+  const { data: d } = await grey(image, { width: 9, height: 8, fit: "fill" });
+  let dhash = 0n;
+  for (let y = 0; y < 8; y++) for (let x = 0; x < 8; x++) dhash = (dhash << 1n) | (d[y * 9 + x]! < d[y * 9 + x + 1]! ? 1n : 0n);
+  const { width = 1, height = 1 } = await sharp(image).metadata();
+  const side = FINGERPRINT_STRIP_SIDE;
+  const { data: strip, info } = await grey(image, width >= height ? { height: side } : { width: side });
+  return { dhash: dhash.toString(16).padStart(16, "0"), grid, strip, stripWidth: info.width, stripHeight: info.height };
 }
 
 // The capture time from a raw EXIF block (as sharp's metadata().exif returns it): DateTimeOriginal (tag
@@ -101,6 +130,7 @@ export async function buildDerived(id: string, ext: string): Promise<DerivedInfo
     width: meta.autoOrient?.width ?? meta.width ?? jev.width,
     height: meta.autoOrient?.height ?? meta.height ?? jev.height,
     takenAt: exifTakenAt(meta.exif),
+    fingerprint: await fingerprint(await readFile(derivedPath(id, "thumb"))),
   };
 }
 

@@ -3,7 +3,7 @@ import path from "node:path";
 import { DatabaseSync, type SQLInputValue } from "node:sqlite";
 import { DEFAULT_SETTINGS, type AttributeValue, type ClassifyResult, type JevStatus, type SiteSettings } from "../shared/types.ts";
 import type { JevAttribute } from "./jev.ts";
-import { DATA_DIR } from "./storage.ts";
+import { DATA_DIR, type Fingerprint } from "./storage.ts";
 
 // Ordered migrations; the index + 1 is the schema version. Only ever append.
 const MIGRATIONS = [
@@ -49,6 +49,21 @@ const MIGRATIONS = [
   `ALTER TABLE photos ADD COLUMN seq INTEGER;
    UPDATE photos SET seq = (SELECT COUNT(*) FROM photos p2 WHERE p2.created_at < photos.created_at OR (p2.created_at = photos.created_at AND p2.id <= photos.id));
    CREATE UNIQUE INDEX photos_seq ON photos (seq);`,
+  // What possible duplicates are found by (see Fingerprint in storage.ts and duplicates.ts), and the pairs
+  // the owner marked "Not duplicates" (photo ids with a < b).
+  `CREATE TABLE photo_fingerprints (
+     photo_id     TEXT PRIMARY KEY REFERENCES photos (id) ON DELETE CASCADE,
+     dhash        TEXT NOT NULL,
+     grid         BLOB NOT NULL,
+     strip        BLOB NOT NULL,
+     strip_width  INTEGER NOT NULL,
+     strip_height INTEGER NOT NULL
+   );
+   CREATE TABLE duplicate_dismissals (
+     a TEXT NOT NULL REFERENCES photos (id) ON DELETE CASCADE,
+     b TEXT NOT NULL REFERENCES photos (id) ON DELETE CASCADE,
+     PRIMARY KEY (a, b)
+   );`,
 ];
 
 // Bumped by every write, so readers (the public gallery cache in photos.ts) know when to reload.
@@ -263,4 +278,41 @@ export function attributesFor(ids: string[]): Map<string, AttributeValue[]> {
     });
   }
   return out;
+}
+
+// ---- Duplicates (see duplicates.ts) ----
+
+export function saveFingerprint(id: string, f: Fingerprint) {
+  db.prepare(
+    `INSERT INTO photo_fingerprints (photo_id, dhash, grid, strip, strip_width, strip_height) VALUES (?, ?, ?, ?, ?, ?)
+     ON CONFLICT (photo_id) DO UPDATE SET dhash = excluded.dhash, grid = excluded.grid, strip = excluded.strip,
+       strip_width = excluded.strip_width, strip_height = excluded.strip_height`,
+  ).run(id, f.dhash, f.grid, f.strip, f.stripWidth, f.stripHeight);
+  version++;
+}
+
+export function allFingerprints(): Map<string, Fingerprint> {
+  const rows = db.prepare("SELECT * FROM photo_fingerprints").all() as {
+    photo_id: string;
+    dhash: string;
+    grid: Uint8Array;
+    strip: Uint8Array;
+    strip_width: number;
+    strip_height: number;
+  }[];
+  return new Map(rows.map((r) => [r.photo_id, { dhash: r.dhash, grid: r.grid, strip: r.strip, stripWidth: r.strip_width, stripHeight: r.strip_height }]));
+}
+
+// Marks every pair in a group "Not duplicates".
+export function dismissPairs(ids: string[]) {
+  tx(() => {
+    const insert = db.prepare("INSERT OR IGNORE INTO duplicate_dismissals (a, b) VALUES (?, ?)");
+    const sorted = [...new Set(ids)].sort();
+    for (let i = 0; i < sorted.length; i++) for (let j = i + 1; j < sorted.length; j++) insert.run(sorted[i]!, sorted[j]!);
+  });
+}
+
+// Dismissed pairs as "a|b" keys (a < b).
+export function dismissedPairs() {
+  return new Set((db.prepare("SELECT a, b FROM duplicate_dismissals").all() as { a: string; b: string }[]).map((r) => `${r.a}|${r.b}`));
 }

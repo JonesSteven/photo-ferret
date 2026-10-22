@@ -165,6 +165,19 @@ export interface AdminPhoto extends PublicPhoto {
   jevUrl: string; // the exact JPEG sent to Jev, so the boxes line up
 }
 
+// Possible duplicates, for the admin (see server/duplicates.ts).
+export interface DuplicateGroup {
+  ids: string[]; // by capture time
+  similarity: number; // the closest pair's correlation, up to 1
+  spanSeconds: number | null; // first to last capture time; null when any photo has none
+  panorama: boolean; // matched as panorama versions
+}
+
+export interface DuplicateReport {
+  groups: DuplicateGroup[];
+  unfingerprinted: number; // visible photos not fingerprinted yet (npm run fingerprint)
+}
+
 export interface PhotoPatch {
   title?: string | null;
   description?: string | null;
