@@ -68,6 +68,8 @@
 .editor::backdrop { background: rgba(8, 14, 10, .7); backdrop-filter: blur(3px); }
 .editor-media { padding: 14px; display: flex; flex-direction: column; gap: 8px; background: var(--bg); }
 .editor-actions { display: flex; flex-wrap: wrap; gap: 8px; }
+.ed-set { display: flex; align-items: center; gap: 10px; }
+.ed-set[hidden] { display: none; }
 .editor-form { position: relative; padding: 14px 16px; overflow-y: auto; display: flex; flex-direction: column; gap: 8px; max-height: calc(100vh - 32px); }
 .ed-status { margin: 0 44px 0 0; font-size: .875rem; color: var(--muted); }
 .ed-status.status-error { color: var(--danger); font-weight: 500; }

@@ -23,6 +23,8 @@ let photos: AdminPhoto[] = [];
 let view: "all" | "pending" | "error" | "hidden" | "duplicates" = "all";
 let duplicates: DuplicateReport | null = null; // null until first loaded
 let editing: AdminPhoto | null = null;
+// When the editor was opened from a duplicate group: that group's photo ids, stepped through with ← and →.
+let editorSet: string[] | null = null;
 let pollTimer: number | undefined;
 // Upload rows still waiting for Jev, by photo id; refresh() updates them when tagging finishes.
 const taggingRows = new Map<string, HTMLLIElement>();
@@ -160,7 +162,7 @@ function visiblePhotos() {
   return photos;
 }
 
-function tile(p: AdminPhoto) {
+function tile(p: AdminPhoto, set?: string[]) {
   const status = statusOf(p);
   const badge = { pending: "Tagging…", error: "Error", hidden: "Hidden", live: "" }[status];
   const primaryDef = defs.find((d) => d.group === "primary");
@@ -177,7 +179,7 @@ function tile(p: AdminPhoto) {
       primaryDef && primary ? el("span", { text: valueLabel(primaryDef, primary) }) : null,
     ),
   );
-  card.addEventListener("click", () => openEditor(p));
+  card.addEventListener("click", () => openEditor(p, set));
   return card;
 }
 
@@ -186,7 +188,7 @@ function render() {
   $("empty").hidden = photos.length > 0;
   if (view === "duplicates") return renderDuplicates();
   const list = visiblePhotos();
-  grid.replaceChildren(...list.map(tile));
+  grid.replaceChildren(...list.map((p) => tile(p)));
   $("count").textContent = `${list.length} shown`;
 }
 
@@ -263,8 +265,8 @@ function duplicateGroup(g: DuplicateGroup, byId: Map<string, AdminPhoto>) {
     el(
       "div",
       { class: "grid admin-grid" },
-      ...members.map((p) => {
-        const t = tile(p);
+      ...members.map((p, _, all) => {
+        const t = tile(p, all.map((m) => m.id));
         if (p === keeper) t.append(el("span", { class: "badge badge-keeper", text: "Suggested keeper", title: `Highest Jev quality score (${p.attrs.quality})` }));
         return t;
       }),
@@ -424,7 +426,7 @@ async function patch(body: PhotoPatch) {
   try {
     const p = await adminApi<AdminPhoto>(`/api/admin/photos/${editing.id}`, { method: "PATCH", json: body });
     replacePhoto(p);
-    renderEditor(p, false);
+    if (editing?.id === p.id) renderEditor(p, false); // not if the editor moved on while this was saving
     flashSaved();
     if ("published" in body) void loadDuplicates();
   } catch (err) {
@@ -577,6 +579,10 @@ function renderEditor(p: AdminPhoto, fresh: boolean) {
   }
   $<HTMLInputElement>("ed-published").checked = p.published;
 
+  const set = editorSetPhotos();
+  $("ed-set").hidden = !set;
+  if (set) $("ed-set-pos").textContent = `Duplicate ${set.findIndex((x) => x.id === p.id) + 1} of ${set.length} · ← → to compare`;
+
   const byId = new Map(p.attributes.map((x) => [x.attr, x]));
   const groups: [string, AttributeDef["group"][]][] = [
     ["Primary subject & what's in it", ["primary", "presence"]],
@@ -595,16 +601,43 @@ function renderEditor(p: AdminPhoto, fresh: boolean) {
   );
 }
 
-function openEditor(p: AdminPhoto) {
+function openEditor(p: AdminPhoto, set?: string[]) {
+  editorSet = set ?? null;
   renderEditor(p, true);
   if (!editor.open) editor.showModal();
 }
 
+// The editor's duplicate group as it stands now (deleted photos drop out), or null if there's no group left.
+function editorSetPhotos() {
+  if (!editorSet || !editing) return null;
+  const set = editorSet.map((id) => photos.find((p) => p.id === id)).filter((p) => p !== undefined);
+  return set.length > 1 && set.some((p) => p.id === editing!.id) ? set : null;
+}
+
+function stepEditor(by: number) {
+  const set = editorSetPhotos();
+  if (!set) return;
+  const i = set.findIndex((p) => p.id === editing!.id);
+  renderEditor(set[(i + by + set.length) % set.length]!, true);
+}
+
+$("ed-prev").addEventListener("click", () => stepEditor(-1));
+$("ed-next").addEventListener("click", () => stepEditor(1));
+editor.addEventListener("keydown", (e) => {
+  if (e.key !== "ArrowLeft" && e.key !== "ArrowRight") return;
+  // Leave the arrows to text fields, sliders and radio buttons.
+  if (e.altKey || e.ctrlKey || e.metaKey || (e.target as HTMLElement).closest("input, textarea, select")) return;
+  e.preventDefault();
+  stepEditor(e.key === "ArrowLeft" ? -1 : 1);
+});
 $("ed-close").addEventListener("click", () => editor.close());
 editor.addEventListener("click", (e) => {
   if (e.target === editor) editor.close();
 });
-editor.addEventListener("close", () => (editing = null));
+editor.addEventListener("close", () => {
+  editing = null;
+  editorSet = null;
+});
 
 for (const [id, key] of [
   ["ed-title", "title"],
@@ -621,7 +654,7 @@ $("ed-rerun").addEventListener("click", async () => {
   if (!editing) return;
   const p = await adminApi<AdminPhoto>(`/api/admin/photos/${editing.id}/reclassify`, { method: "POST" });
   replacePhoto(p);
-  renderEditor(p, false);
+  if (editing?.id === p.id) renderEditor(p, false);
   void refresh();
 });
 
